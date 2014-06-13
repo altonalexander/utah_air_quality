@@ -1,0 +1,179 @@
+Air Quality in Utah
+======
+
+Introduction
+----
+
+Air quality is a hot topic and one that affects us all. The local big data experts and enthusiests are hosting a friendly competition to improve air quality in Utah.
+
+For more details on the competition and for local meetups visit http://www.bigdatautah.org
+
+Data sources
+-----
+
+For the sake of simplicity this introduction is going to start with tip of the iceberg when it comes to data. We'll start with the first source:
+
+Federal EPA Data: http://aqsdr1.epa.gov/aqsweb/aqstmp/airdata/download_files.html
+
+State Air Quality Data: http://www.airquality.utah.gov/aqp/xmlFeed.php?id=slc
+
+http://en.wikipedia.org/wiki/List_of_counties_in_Utah
+
+```{r}
+library(maps)
+setwd("C:/Users/aalexander/Documents/Personal/utah_air_quality")
+dir.create("raw_data", showWarnings=F)
+dir.create("raw_data_downloads", showWarnings=F)
+available_datasets = list.files("raw_data")
+```
+
+
+```{r}
+
+# define datasets to download
+years = c(2013)
+metrics = c("42401","88101","88502","81102","SPEC","44201","42401","42101","42602","WIND","TEMP","PRESS","RH_DP","HAPS","VOCS","LEAD")
+
+# if dataset isn't downloaded then download and unzip it
+for( year in years ){
+  
+  for( metric in metrics ){
+    
+    if(!paste("daily_",metric,"_",year,".csv",sep="") %in% available_datasets){
+        # extract the zip from the government website
+        download.file(
+            paste("http://aqsdr1.epa.gov/aqsweb/aqstmp/airdata/daily_",metric,"_",year,".zip",sep=""),
+            paste("raw_data_downloads/daily_",metric,"_",year,".zip",sep=""))
+        
+        # extract the raw data and store it in the appropriate place
+        unzip(
+            paste("raw_data_downloads/daily_",metric,"_",year,".zip",sep=""),
+            exdir="raw_data")
+    }
+
+  }
+  
+}
+
+```
+
+Preview some of the data
+------
+```{r}
+
+daily1 = read.csv("raw_data/daily_88101_2013.csv")
+daily2 = read.csv("raw_data/daily_88101_2012.csv")
+daily = merge(daily2,daily1,all=T)
+
+# only get utah state's data
+daily = daily[daily$State.Name=="Utah",]
+daily$Date.Local = as.Date(daily$Date.Local)
+daily0 = daily
+
+names(daily)
+
+str(daily)
+```
+
+
+What is the distribution by county?
+```{r fig.width=12, fig.height=6}
+plot(factor(daily$County.Name),daily$Arithmetic.Mean)
+
+# what is the median?
+aggregate(daily$Arithmetic.Mean,by=list(daily$County.Name), FUN=median)
+
+# what are the max offendors?
+aggregate(daily$Arithmetic.Mean,by=list(daily$County.Name), FUN=max)
+
+```
+
+Wow Utah county! Your max is twice that of Salt Lake county!
+
+
+```{r fig.width=12, fig.height=6}
+# Lets just pick on one county
+
+countyName = "Salt Lake"
+daily = daily0[daily0$County.Name == countyName,]
+
+
+# Average
+plot( 
+   aggregate(daily$Arithmetic.Mean,by=list(daily$Date.Local),FUN=median), 
+   xlab="Date", ylab="PM2.5  (88101)",
+   main=paste(countyName,"County Air Quality"), type="l")
+
+
+# prep the plot
+plot( daily[, "Date.Local"],
+   daily[, "Arithmetic.Mean"], 
+   xlab="Date", ylab="PM2.5  (88101)",
+   main=paste(countyName,"County Air Quality by Measurement Site"), type="n")
+
+# prep the colors
+colors=rainbow(length(unique(paste(daily$County.Code,daily$Site.Num,daily$POC,daily$Sample.Duration,sep="-"))))
+iter = 0
+for(eachSite in rev(unique(paste(daily$County.Code,daily$Site.Num,daily$POC,daily$Sample.Duration,sep="-")))){
+  iter=iter+1
+  location = strsplit(eachSite,"-")[[1]]
+  with(daily[daily$County.Code==as.numeric(location[1]) 
+             & daily$Site.Num==as.numeric(location[2])
+             & daily$POC==as.numeric(location[3])
+             & daily$Sample.Duration==as.character(daily$Sample.Duration),],
+       lines(Date.Local, Arithmetic.Mean, col=colors[iter]))
+}
+
+```
+
+```{r fig.width=7, fig.height=6}
+# map of values on each county
+
+data(county.fips)
+map("county",'utah', col = colors[colorsmatched], fill = TRUE, resolution = 0, lty = 1)
+
+
+m = map("county", "utah", fill = TRUE, plot = FALSE)
+daily$map_county = map.where(m, daily$Longitude, daily$Latitude)
+
+# align data with map definitions by (partial) matching state,county
+  # names, which include multiple polygons for some counties
+  cnty.fips <- county.fips$fips[match(map("county", plot=FALSE)$names,
+    county.fips$polyname)]
+colorsmatched <- unemp$colorBuckets [match(cnty.fips, unemp$fips)]
+
+
+```
+
+
+```{r fig.width=12, fig.height=6}
+# find all unique measurements available for last year
+load_these = grep("2013.csv",available_datasets)
+
+# load each dataset that is available
+for(dataset in load_these){
+  
+  d = read.csv(paste("raw_data/",available_datasets[dataset],sep=""))
+  
+  metricName = d[1,"Parameter.Name"]
+  d = d[d$State.Name=="Utah",]
+  d = d[d$County.Name == countyName,]
+  d$Date.Local = as.Date(d$Date.Local)
+  
+  
+  
+  # all points
+  plot( d$Date.Local, d$Arithmetic.Mean,
+     #aggregate(d$Arithmetic.Mean,by=list(d$Date.Local),FUN=median), 
+     xlab = "Date", ylab = "mean",
+     main = paste(countyName,"County -",metricName),
+     sub = available_datasets[dataset])
+  
+  
+
+  
+}
+
+```
+
+
