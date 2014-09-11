@@ -189,8 +189,11 @@ Now that we have the dataset available lets compute the correlation using a simp
 ```{r}
 # linear model
 fit = lm(Arithmetic.Mean~Flow..Veh.Day.,data=master)
+summary(fit)
+
 plot(master$Arithmetic.Mean~master$Flow..Veh.Day.)
 abline(fit)
+
 ```
 
 Summary of results
